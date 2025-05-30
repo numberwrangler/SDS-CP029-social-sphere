@@ -82,5 +82,5 @@ To contribute to this project, please follow the guidelines avilable in our [CON
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------- | --------------- |
 | **1 · Setup & EDA**                             | GitHub repo, project structure, virtual environment, data profiling, outlier checks, visualization       | **Week 1**      |
 | **2 · Feature Engineering & Model Development** | Design, train, experiment with models.                                                                   | **Weeks 2 - 4** |
-| **4 · Deployment**                              | Build Streamlit UI (Insights, Predictors, Clusters); deploy to cloud                                     | **Week 5**      |
+| **3 · Deployment**                              | Build Streamlit UI (Insights, Predictors, Clusters); deploy to cloud                                     | **Week 5**      |
 
