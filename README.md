@@ -6,6 +6,9 @@ This project is a collaborative initiative brought to you by SuperDataScience, a
 To contribute to this project, please follow the guidelines avilable in our [CONTRIBUTING.md](CONTRIBUTING.md) file.
 
 # Project Scope of Works:
+1.
+2.
+3.
 
 ## Project Overview
 **Social Sphere** explores how social-media habits relate to students’ academic performance, sleep, mental health, and relationship dynamics. Using an anonymized cross-section of 16- to 25-year-olds from multiple countries, the project will:
