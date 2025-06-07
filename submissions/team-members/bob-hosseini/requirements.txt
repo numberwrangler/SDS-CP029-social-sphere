@@ -1,0 +1,8 @@
+ipykernel
+pandas
+matplotlib
+seaborn
+kagglehub
+scipy
+scikit-learn
+umap-learn
