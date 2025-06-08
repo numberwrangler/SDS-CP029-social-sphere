@@ -1,4 +1,5 @@
 ipykernel
+notebook
 pandas
 matplotlib
 seaborn
