@@ -340,6 +340,8 @@ st.markdown("""
 
 """)
 
+st.divider()
+
 # Create pivot table for heatmap
 pivot = students.pivot_table(
     values='Addicted_Score',
