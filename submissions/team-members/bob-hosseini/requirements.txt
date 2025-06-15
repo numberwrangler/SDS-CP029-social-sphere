@@ -7,3 +7,6 @@ kagglehub
 scipy
 scikit-learn
 umap-learn
+mlflow
+shap
+xgboost
