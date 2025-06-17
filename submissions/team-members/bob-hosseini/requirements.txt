@@ -1,0 +1,12 @@
+ipykernel
+notebook
+pandas
+matplotlib
+seaborn
+kagglehub
+scipy
+scikit-learn
+umap-learn
+mlflow
+shap
+xgboost
