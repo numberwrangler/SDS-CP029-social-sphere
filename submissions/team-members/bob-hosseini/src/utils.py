@@ -7,6 +7,7 @@ evaluation, and visualization used in the classification notebooks.
 
 # Standard library imports
 import json
+import os
 
 # Third-party imports
 import matplotlib.pyplot as plt
@@ -56,6 +57,8 @@ warnings.filterwarnings(
     "ignore",
     message="Hint: Inferred schema contains integer column"
 )
+warnings.filterwarnings("ignore", category=FutureWarning, module="shap")
+warnings.filterwarnings("ignore", message=".*NumPy global RNG.*")
 
 
 
@@ -545,22 +548,51 @@ def log_test_set_performance(
     Evaluate `model` on (X_test, y_test), compute common metrics,
     a confusion matrix plot, and a text classification report,
     then log everything into the active MLflow run.
+    
+    Handles both binary and multiclass classification automatically.
     """
     # 1) Predictions & probabilities
-    y_pred  = model.predict(X_test)
-    proba    = model.predict_proba(X_test)[:, 1]
-
-    # 2) Compute metrics
-    metrics = {
-        f"{prefix}_accuracy":   accuracy_score(y_test, y_pred),
-        f"{prefix}_precision":  precision_score(y_test, y_pred),
-        f"{prefix}_recall":     recall_score(y_test, y_pred),
-        f"{prefix}_f1_score":   f1_score(y_test, y_pred),
-        f"{prefix}_roc_auc":    roc_auc_score(y_test, proba),
-    }
+    y_pred = model.predict(X_test)
+    
+    # Determine if this is binary or multiclass
+    n_classes = len(np.unique(y_test))
+    is_binary = n_classes == 2
+    
+    # 2) Compute metrics based on problem type
+    if is_binary:
+        # Binary classification metrics
+        proba = model.predict_proba(X_test)[:, 1]  # Probability of positive class
+        metrics = {
+            f"{prefix}_accuracy":   accuracy_score(y_test, y_pred),
+            f"{prefix}_precision":  precision_score(y_test, y_pred),
+            f"{prefix}_recall":     recall_score(y_test, y_pred),
+            f"{prefix}_f1_score":   f1_score(y_test, y_pred),
+            f"{prefix}_roc_auc":    roc_auc_score(y_test, proba),
+        }
+    else:
+        # Multiclass classification metrics
+        metrics = {
+            f"{prefix}_accuracy":        accuracy_score(y_test, y_pred),
+            f"{prefix}_precision_macro": precision_score(y_test, y_pred, average='macro'),
+            f"{prefix}_precision_weighted": precision_score(y_test, y_pred, average='weighted'),
+            f"{prefix}_recall_macro":    recall_score(y_test, y_pred, average='macro'),
+            f"{prefix}_recall_weighted": recall_score(y_test, y_pred, average='weighted'),
+            f"{prefix}_f1_macro":        f1_score(y_test, y_pred, average='macro'),
+            f"{prefix}_f1_weighted":     f1_score(y_test, y_pred, average='weighted'),
+        }
+        
+        # Add multiclass ROC-AUC if model supports predict_proba
+        try:
+            proba = model.predict_proba(X_test)
+            metrics[f"{prefix}_roc_auc_ovr"] = roc_auc_score(y_test, proba, multi_class='ovr')
+            metrics[f"{prefix}_roc_auc_ovo"] = roc_auc_score(y_test, proba, multi_class='ovo')
+        except:
+            # Some models might not support predict_proba
+            pass
+    
     # 3) Log metrics
     for name, val in metrics.items():
-        mlflow.log_metric(name, round(val, 2))
+        mlflow.log_metric(name, round(val, 4))
 
     # 4) Classification report
     report = classification_report(y_test, y_pred)
@@ -571,18 +603,33 @@ def log_test_set_performance(
 
     # 5) Confusion matrix plot
     cm = confusion_matrix(y_test, y_pred)
-    fig, ax = plt.subplots(figsize=(4, 4))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
+    fig, ax = plt.subplots(figsize=(6, 5))
+    
+    # Create labels for confusion matrix
+    if is_binary:
+        labels = ['Low', 'High']
+    else:
+        # For 3-class: 0=Low, 1=Medium, 2=High
+        labels = ['Low', 'Medium', 'High']
+    
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax,
+                xticklabels=labels, yticklabels=labels)
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
     ax.set_title(f"{prefix.capitalize()} Confusion Matrix")
     plt.tight_layout()
+    
     cm_path = f"{prefix}_confusion_matrix.png"
-    fig.savefig(cm_path)
+    fig.savefig(cm_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     mlflow.log_artifact(cm_path)
-
-
+    
+    # Clean up temporary files
+    import os
+    if os.path.exists(report_path):
+        os.remove(report_path)
+    if os.path.exists(cm_path):
+        os.remove(cm_path)
 
 
 # ===============================
@@ -599,7 +646,8 @@ def run_classification_gridsearch_experiment(
     dataset: dict,          # {"train_ds": X_train_full, "test_ds": X_test}
     registered_model_name: str,
     verbose: bool = False,
-    feature_set: str = "all"
+    feature_set: str = "all",
+    refit_metric: str = "f1_score"
 ):
     grid_search = GridSearchCV(
         estimator=pipeline,        # your Pipeline([... ('classifier', LogisticRegression()) ])
@@ -608,11 +656,12 @@ def run_classification_gridsearch_experiment(
         scoring=scoring,            # primary metric
         n_jobs=-1,                    # parallelize across all cores
         return_train_score=True,
-        refit='f1_score',            # ← what to optimize/return as best_estimator_
+        refit=refit_metric,            # ← what to optimize/return as best_estimator_
         error_score=np.nan,  # treat fold‐errors as NaN rather than crashing
         verbose=1
     )
 
+    print(f"Running grid search for {name}")
     with mlflow.start_run(run_name=name):
         # 1) Log dataset inputs
         mlflow.log_input(dataset["train_ds"], context="training")
@@ -639,7 +688,7 @@ def run_classification_gridsearch_experiment(
             mlflow.log_metric(metric, mean_score.round(2))
             mlflow.log_metric(f"{metric}_std", std_score)
             if verbose:
-                print(f"{metric}: {mean_score.round(2)} ± {std_score}")
+                print(f"{metric}: {mean_score.round(2)} ± {std_score.round(2)}")
 
         # 6) Log and register the best estimator
         best_estimator = grid_search.best_estimator_
@@ -647,20 +696,43 @@ def run_classification_gridsearch_experiment(
         example_preds = best_estimator.predict(example_input)
         signature = infer_signature(example_input, example_preds)
         
+        # ===== SHAP plot for binary classification
+        n_classes = len(np.unique(y_train))
+        is_binary = n_classes == 2
+        if is_binary:
+            plot_type = "violin"
+        else:
+            plot_type = "bar"
         # Adding shap to the model
+        # print(f"Running SHAP for {name}")
+        fig_sum = None
         if 'baseline' not in name:
             if 'logreg' in name:
                 shap_type = "linear"
             else:
                 shap_type = "tree"
+            # print(f"Running SHAP for {name} with {plot_type} and {shap_type}")
             fig_sum = run_shap_experiment(
                 best_model=best_estimator,
                 X_train_full=X_train,
                 feature_perturbation="interventional",
-                plot_type="violin", # other options: "bar", "dot", "violin"
+                plot_type=plot_type, # other options: "bar", "dot", "violin"
                 shap_type=shap_type
             )
             mlflow.log_figure(fig_sum, "shap_summary.png")
+
+        # ===== ROC plot for binary classification
+        fig_roc = None
+        if is_binary:
+            fig_roc = create_and_log_roc_plot_binary(
+                model=best_estimator,
+                X_test=X_test,
+                y_test=y_test,
+                prefix="test",
+                show_plot=False
+            )
+            mlflow.log_figure(fig_roc, "roc_curve.png")
+
 
         # Log test set performance
         log_test_set_performance(
@@ -681,9 +753,233 @@ def run_classification_gridsearch_experiment(
     if verbose:
         # 3. Print summary in the output cell
         print("Best parameters:", grid_search.best_params_)
-        print("Best F1 score (CV):", grid_search.best_score_)
+        print("Best F1 score (CV):", grid_search.best_score_.round(2))
 
         # 4. (Optional) inspect all CV results
         cv_df = pd.DataFrame(grid_search.cv_results_)
         display(cv_df.sort_values("mean_test_f1_score", ascending=False).head(3))
-    return best_estimator, grid_search
+    
+    # plot SHAP summary
+    # if 'baseline' not in name and fig_sum is not None:
+    #     plt.figure(figsize=(10, 6))
+    #     plt.title("SHAP Summary Plot")
+    #     plt.show()
+
+    return best_estimator, grid_search, fig_sum, fig_roc
+
+
+# ===============================
+# Multi-class classification
+# ===============================
+
+def create_multiclass_conflict(df, target_column='Conflicts', low_threshold=1, high_threshold=3, visualize=True):
+    """
+    Create 3-class conflict classification (Low, Medium, High) from conflict scores.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Input dataframe
+    target_column : str, default='Conflicts'
+        Name of the conflict column
+    low_threshold : int, default=1
+        Upper bound for Low class (inclusive). Low: 0 to low_threshold
+    high_threshold : int, default=3  
+        Lower bound for High class (exclusive). High: > high_threshold
+        Medium: low_threshold+1 to high_threshold
+    visualize : bool, default=True
+        Whether to create visualizations
+        
+    Returns:
+    --------
+    pd.DataFrame
+        Dataframe with added 3-class conflict column
+    dict
+        Dictionary with analysis results including thresholds, counts, and class balance
+    """
+    # Make a copy to avoid modifying original dataframe
+    df_copy = df.copy()
+    
+    # Create 3-class target variable
+    def classify_conflict(score):
+        if score <= low_threshold:
+            return 'Low'
+        elif score <= high_threshold:
+            return 'Medium' 
+        else:
+            return 'High'
+    
+    df_copy['Conflict_3Class'] = df_copy[target_column].apply(classify_conflict)
+    
+    # Calculate statistics
+    conflict_counts = df_copy['Conflict_3Class'].value_counts()
+    total_samples = len(df_copy)
+    
+    # Print analysis
+    print(f"3-Class Conflict Classification:")
+    print(f"Low Conflict (0-{low_threshold}): {conflict_counts.get('Low', 0)} samples")
+    print(f"Medium Conflict ({low_threshold+1}-{high_threshold}): {conflict_counts.get('Medium', 0)} samples")
+    print(f"High Conflict ({high_threshold+1}-max): {conflict_counts.get('High', 0)} samples")
+    print(f"Class proportions:")
+    proportions = conflict_counts / total_samples
+    for class_name, prop in proportions.items():
+        print(f"  {class_name}: {prop:.3f} ({prop*100:.1f}%)")
+    
+    # Convert to numeric labels (0, 1, 2)
+    class_mapping = {'Low': 0, 'Medium': 1, 'High': 2}
+    df_copy['Conflict_3Class_Numeric'] = df_copy['Conflict_3Class'].map(class_mapping)
+    
+    # Create visualizations if requested
+    if visualize:
+        fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+        
+        # Original distribution with threshold lines
+        axes[0].hist(df_copy[target_column], bins=range(int(df_copy[target_column].min()), 
+                                                       int(df_copy[target_column].max()) + 2), 
+                    alpha=0.7, edgecolor='black')
+        axes[0].axvline(low_threshold + 0.5, color='red', linestyle='--', linewidth=2,
+                       label=f'Low/Medium = {low_threshold + 0.5}')
+        axes[0].axvline(high_threshold + 0.5, color='orange', linestyle='--', linewidth=2,
+                       label=f'Medium/High = {high_threshold + 0.5}')
+        axes[0].set_xlabel('Conflict Score')
+        axes[0].set_ylabel('Frequency')
+        axes[0].set_title('Original Conflict Distribution')
+        axes[0].legend()
+        axes[0].grid(True, alpha=0.3)
+        
+        # 3-class distribution (categorical)
+        sns.countplot(data=df_copy, x='Conflict_3Class', ax=axes[1], 
+                     order=['Low', 'Medium', 'High'])
+        axes[1].set_title('3-Class Conflict Distribution\n(Categorical Labels)')
+        axes[1].set_ylabel('Count')
+        
+        # Add count labels on bars
+        for i, bar in enumerate(axes[1].patches):
+            height = bar.get_height()
+            axes[1].text(bar.get_x() + bar.get_width()/2., height,
+                        f'{int(height)}', ha='center', va='bottom')
+        
+        # 3-class distribution (numeric)
+        sns.countplot(data=df_copy, x='Conflict_3Class_Numeric', ax=axes[2])
+        axes[2].set_title('3-Class Conflict Distribution\n(0=Low, 1=Medium, 2=High)')
+        axes[2].set_ylabel('Count')
+        axes[2].set_xlabel('Class (Numeric)')
+        
+        # Add count labels on bars
+        for i, bar in enumerate(axes[2].patches):
+            height = bar.get_height()
+            axes[2].text(bar.get_x() + bar.get_width()/2., height,
+                        f'{int(height)}', ha='center', va='bottom')
+        
+        plt.tight_layout()
+        plt.show()
+
+    # Prepare results dictionary
+    results = {
+        'low_threshold': low_threshold,
+        'high_threshold': high_threshold,
+        'counts': conflict_counts.to_dict(),
+        'proportions': proportions.to_dict(),
+        'class_mapping': class_mapping
+    }
+    
+    return df_copy, results
+
+# Converting targets from binary to multi-class 
+def convert_to_multiclass_target(y_series, original_data, target_column='Conflicts', 
+                                low_threshold=1, high_threshold=3):
+    """
+    Convert existing target variables to 3-class format without recreating train/test splits.
+    
+    Parameters:
+    -----------
+    y_series : pd.Series or array-like
+        The target variable series (can be binary or original conflicts)
+    original_data : pd.DataFrame  
+        Original dataframe with the Conflicts column
+    target_column : str, default='Conflicts'
+        Name of the original conflict column
+    low_threshold : int, default=1
+        Upper bound for Low class (inclusive)
+    high_threshold : int, default=3
+        Lower bound for High class (exclusive)
+        
+    Returns:
+    --------
+    pd.Series
+        3-class target variable (0=Low, 1=Medium, 2=High)
+    """
+    # Get the original conflict scores for the same indices as y_series
+    original_conflicts = original_data.loc[y_series.index, target_column]
+    
+    # Create 3-class labels
+    def classify_conflict(score):
+        if score <= low_threshold:
+            return 0  # Low
+        elif score <= high_threshold:
+            return 1  # Medium
+        else:
+            return 2  # High
+    
+    multiclass_target = original_conflicts.apply(classify_conflict)
+    
+    # Print distribution
+    counts = multiclass_target.value_counts().sort_index()
+    print(f"3-Class Distribution:")
+    print(f"Low (0): {counts.get(0, 0)} samples")
+    print(f"Medium (1): {counts.get(1, 0)} samples") 
+    print(f"High (2): {counts.get(2, 0)} samples")
+    
+    return multiclass_target
+
+
+def create_and_log_roc_plot_binary(model, X_test, y_test, prefix="test", show_plot=True):
+    """
+    Create ROC plot for binary classification and log to MLflow.
+    """
+    from sklearn.metrics import roc_curve, auc
+    
+    # Get predicted probabilities for positive class
+    y_prob = model.predict_proba(X_test)[:, 1]
+    
+    # Calculate ROC curve
+    fpr, tpr, _ = roc_curve(y_test, y_prob)
+    roc_auc = auc(fpr, tpr)
+    
+    # Create plot
+    plt.figure(figsize=(8, 6))
+    plt.plot(fpr, tpr, color='darkorange', lw=2, 
+             label=f'ROC curve (AUC = {roc_auc:.2f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', 
+             label='Random classifier')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curve - Binary Classification')
+    plt.legend(loc="lower right")
+    plt.grid(True, alpha=0.3)
+    fig_roc = plt.gcf()
+    
+    # Log to MLflow
+    roc_path = f"{prefix}_roc_curve.png"
+    plt.savefig(roc_path, dpi=150, bbox_inches='tight')
+    mlflow.log_artifact(roc_path)
+    
+    if show_plot:
+        plt.show()
+    else:
+        plt.close(fig_roc)
+    
+    # Clean up
+    # import os
+    if os.path.exists(roc_path):
+        os.remove(roc_path)
+    
+        # Show in notebook if requested
+    # if show_plot:
+        # plt.show()
+    # else:
+        # plt.close(fig)
+    
+    return fig_roc
