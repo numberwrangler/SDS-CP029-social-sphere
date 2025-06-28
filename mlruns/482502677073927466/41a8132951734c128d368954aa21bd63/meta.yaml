@@ -1,0 +1,14 @@
+artifact_uri: mlflow-artifacts:/482502677073927466/41a8132951734c128d368954aa21bd63/artifacts
+end_time: 1750744089781
+entry_point_name: ''
+experiment_id: '482502677073927466'
+lifecycle_stage: active
+run_id: 41a8132951734c128d368954aa21bd63
+run_name: invincible-toad-465
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1750744060562
+status: 3
+tags: []
+user_id: kola_
