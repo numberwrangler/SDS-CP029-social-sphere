@@ -10,9 +10,9 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.express as px
-import plotly.graph_objects as go
+# import plotly.graph_objects as go
 import seaborn as sns
-import shap
+# import shap
 import mlflow
 import warnings
 
@@ -20,9 +20,10 @@ import sys
 import os
 # Add the src directory to the path (relative to the app directory)
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-import regression
+# import regression
 import utils  # Add this import
 from config_loader import get_config
+# from mlflow_config import setup_mlflow
 
 warnings.filterwarnings('ignore')
 
@@ -43,18 +44,16 @@ class SocialSphereUI:
             st.markdown("### ℹ️ Project Overview")
             st.markdown(
                 """
-                **SocialSphere Analytics** is a comprehensive analysis platform for understanding social media usage patterns, 
-                conflicts, and addiction scores among students. This app provides both exploratory data analysis and 
-                predictive modeling capabilities.
-                    
-                > 📊 **Features:**
-                > - Interactive EDA with multiple visualizations
-                > - Conflict prediction based on user characteristics
-                > - Addiction score forecasting
-                > - Real-time data insights
+                **SocialSphere Analytics** is an interactive app for exploring social media's impact on students. It offers:
+                
+                - **EDA & Visualizations:** Discover patterns in social media usage.
+                - **Conflict Analysis:** Explore relationship conflicts due to social media.
+                - **Addiction Prediction:** Assess addiction levels based on user data.
+                
+                Ideal for researchers and educators to gain insights into social media challenges.
                 """
             )
-
+            st.divider()  # ✨ Clean horizontal line separator
             st.markdown("### 📊 Dataset Summary")
             st.markdown(
                 f"""
@@ -64,15 +63,17 @@ class SocialSphereUI:
                 - **Platforms:** {self.df['Platform'].nunique()}
                 """
             )
-
+            
+            st.divider()  # ✨ Clean horizontal line separator
             st.markdown("### 🎯 Target Variables")
             st.markdown(
                 """
-                - **Conflicts:** Number of conflicts (0-5)
+                - **Conflicts:** Level of conflicts over social media (Low, High)
                 - **Addicted_Score:** Addiction level (1-10)
                 """
             )
 
+            st.divider()  # ✨ Clean horizontal line separator
             st.markdown("### 🤖 MLflow Models")
             
             # Get model configurations
@@ -80,8 +81,7 @@ class SocialSphereUI:
             addiction_config = config.get_model_config('addiction')
             
             st.markdown(
-                f"""
-                **Pre-trained Models:**
+                f"""                
                 - **Conflicts:** {conflicts_config.get('name', 'CatBoost Binary Classifier')}
                 - **Addiction:** {addiction_config.get('name', 'CatBoost Regressor with Rounding')}
                 
@@ -95,6 +95,7 @@ class SocialSphereUI:
             if experiment_url:
                 st.markdown(f"[View MLflow Experiments and Models]({experiment_url})")
 
+            st.divider()  # ✨ Clean horizontal line separator
             st.markdown("### 📁 Dataset Source")
             
             # Add data source link from config
@@ -103,6 +104,7 @@ class SocialSphereUI:
             if source_url:
                 st.markdown(f"[Students' Social Media Addiction Dataset]({source_url})")
 
+            st.divider()  # ✨ Clean horizontal line separator
             st.markdown("### 🗂️ GitHub Repository")
             st.markdown(
                 "[View on GitHub](https://github.com/SuperDataScience-Community-Projects/SDS-CP029-social-sphere/tree/main/submissions/team-members/bob-hosseini)"
@@ -422,6 +424,13 @@ class PredictionUI:
     def render_prediction_tab(self):
         """Render the prediction tab"""
         st.header("🔮 Prediction Models")
+        st.write("Using machine learning models to predict social media conflicts and addiction scores.")
+
+        mlflow_config = config.get_mlflow_config()
+        tracking_uri = mlflow_config.get('tracking_uri')
+        mlflow.set_tracking_uri(tracking_uri)
+        # DAGSHUB_REPO = mlflow_config.get('DAGSHUB_REPO')
+        # setup_mlflow(DAGSHUB_REPO)
         
         # Load models
         # conflicts_model = self.model_manager.load_conflicts_model()

@@ -1,14 +1,18 @@
 import streamlit as st
 import pickle
-import pandas as pd
-import numpy as np
+# import pandas as pd
+# import numpy as np
 import warnings
 import logging
 import sys
 import os
+# from PIL import Image
 
 # Add the src directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+BASE_DIR = os.path.dirname(__file__)  # wherever app.py lives
+DATA_PATH = os.path.join(BASE_DIR, "..", "data", "data_cleaned.pickle")
+
 from config_loader import get_config
 
 # Import frontend helper
@@ -36,17 +40,15 @@ st.set_page_config(
 
 # Load data
 @st.cache_data
-def load_data():
-    data_config = config.get_data_config()
-    data_path = data_config.get('local_path', 'data/data_cleaned.pickle')
-    with open(data_path, 'rb') as f:
+def load_data(path):
+    with open(path, 'rb') as f:
         df = pickle.load(f)
     return df
 
 def main():
     """Main application function"""
     # Load the data
-    df = load_data()
+    df = load_data(DATA_PATH)
     
     # Initialize UI components
     ui = SocialSphereUI(df)
@@ -55,8 +57,16 @@ def main():
     # Render sidebar
     ui.render_sidebar()
     
+    # Display header image
+    image_path = os.path.join(os.path.dirname(__file__), '..', 'image.jpg')
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        # Display small centered image
+        st.image(image_path, width=800)
+
     # Main title
-    st.title("📱 SocialSphere Analytics: Social Media Conflicts & Addiction Prediction")
+    st.title("📱 SocialSphere Analytics:")
+    st.title("Social Media Conflicts & Addiction Prediction")
     
     # Initialize session state for tab selection
     if 'active_tab' not in st.session_state:
