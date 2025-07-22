@@ -63,3 +63,9 @@ If geographic analysis were desired, it could be done separately through:
 - **Hierarchical clustering** with country as a secondary factor
 
 The exclusion of the 'Country' column is therefore a **deliberate design choice** that focuses the clustering on meaningful behavioral patterns while avoiding the complications of high-cardinality geographic data.
+
+### ** Social Media Impact Analyzer** 
+- Analyze social media usage patterns
+- Predict addiction scores and conflict levels
+- Cluster users into intervention groups
+- Provide interactive EDA insights

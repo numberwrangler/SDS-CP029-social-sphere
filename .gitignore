@@ -9,3 +9,17 @@ venv/
 .venv/
 env/
 ENV/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# MLflow runs
+mlruns/
