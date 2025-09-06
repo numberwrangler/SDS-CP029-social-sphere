@@ -190,9 +190,9 @@ class SocialMediaAnalyzer:
         # Get the predicted score
         predicted_score = result['predicted_score']
         
-        # Convert score to angle (0-180 degrees, where 0 is low addiction, 180 is high)
-        # Map 1-10 score to 0-180 degrees
-        angle = (predicted_score - 1) * 20  # 20 degrees per unit (180/9)
+        # Convert score to angle (0-180 degrees, where 0 is high addiction, 180 is low)
+        # Map 1-10 score to 180-0 degrees (reversed to match reversed colors)
+        angle = 180 - (predicted_score - 1) * 20  # 20 degrees per unit (180/9)
         
         # Create the gauge
         # Background circle (full range)
